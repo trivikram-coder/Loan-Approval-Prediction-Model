@@ -1,118 +1,120 @@
-from flask import Flask, request, render_template
+from fastapi import FastAPI
+from pydantic import BaseModel
 import joblib
-import numpy as np
 
-app = Flask(__name__)
+app = FastAPI()
 
-model  = joblib.load('Prediction Model')
+# Load trained ML model
+model = joblib.load("Prediction Model")
 
-@app.route('/')
-def home():
-    return render_template("index.html")
+class PredictRequest(BaseModel):
+    features: list[float]
 
-@app.route('/about')
-def about():
-    return render_template("about.html")
+@app.get("/")
+def health():
+    return "ML SERVICE RUNNING SUCCESSFULLY"
 
-@app.route('/contact')
-def contact():
-    return render_template("contact.html")
+@app.post("/predict")
+def predict(data: PredictRequest):
 
+    print("FEATURE VECTOR:", data.features)
 
-@app.route('/predict', methods=['GET', 'POST'])
+    f = data.features
+    prediction = model.predict([f])[0]
 
+    # Feature mapping
+    credit = f[0]
+    applicant_income_log = f[1]
+    loan_amount_log = f[3]
+    not_graduate = f[10]
+    employed_yes = f[11]
 
-def predict():
-    if request.method ==  'POST':
-        gender = request.form['gender']
-        married = request.form['married']
-        dependents = request.form['dependents']
-        education = request.form['education']
-        employed = request.form['employed']
-        credit = float(request.form['credit'])
-        area = request.form['area']
-        ApplicantIncome = float(request.form['ApplicantIncome'])
-        CoapplicantIncome = float(request.form['CoapplicantIncome'])
-        LoanAmount = float(request.form['LoanAmount'])
-        Loan_Amount_Term = float(request.form['Loan_Amount_Term'])
+    reasons = []
 
-        # gender
-        if (gender == "Male"):
-            male=1
-        else:
-            male=0
-        
-        # married
-        if(married=="Yes"):
-            married_yes = 1
-        else:
-            married_yes=0
+    # 🔴 ONLY ADD REASONS IF MODEL REJECTS
+    if prediction == "N":
 
-        # dependents
-        if(dependents=='1'):
-            dependents_1 = 1
-            dependents_2 = 0
-            dependents_3 = 0
-        elif(dependents == '2'):
-            dependents_1 = 0
-            dependents_2 = 1
-            dependents_3 = 0
-        elif(dependents=="3+"):
-            dependents_1 = 0
-            dependents_2 = 0
-            dependents_3 = 1
-        else:
-            dependents_1 = 0
-            dependents_2 = 0
-            dependents_3 = 0  
+        if credit == 0:
+            reasons.append("No or poor credit history")
 
-        # education
-        if (education=="Not Graduate"):
-            not_graduate=1
-        else:
-            not_graduate=0
+        # income < ~₹3000/month (log ≈ 8)
+        if applicant_income_log < 8:
+            reasons.append("Low applicant income")
 
-        # employed
-        if (employed == "Yes"):
-            employed_yes=1
-        else:
-            employed_yes=0
+        # loan > income * ~6 (more realistic)
+        if loan_amount_log - applicant_income_log > 1.8:
+            reasons.append("Requested loan amount is high compared to income")
 
-        # property area
+        if employed_yes == 0:
+            reasons.append("Applicant employment stability is low")
 
-        if(area=="Semiurban"):
-            semiurban=1
-            urban=0
-        elif(area=="Urban"):
-            semiurban=0
-            urban=1
-        else:
-            semiurban=0
-            urban=0
+        if not_graduate == 1:
+            reasons.append("Applicant education level increases risk profile")
+
+        if not reasons:
+            reasons.append("Model assessment indicates higher risk profile")
+
+        return {
+            "status": "NOT_ELIGIBLE",
+            "message": "Sorry, You are not Eligible to avail loan services",
+            "reasons": reasons
+        }
+
+    # ✅ ELIGIBLE CASE — NO NEGATIVE REASONS
+    return {
+        "status": "ELIGIBLE",
+        "message": "Congratulations, You can avail loan services",
+        "reasons": []
+    }
 
 
-        ApplicantIncomelog = np.log(ApplicantIncome)
-        totalincomelog = np.log(ApplicantIncome+CoapplicantIncome)
-        LoanAmountlog = np.log(LoanAmount)
-        Loan_Amount_Termlog = np.log(Loan_Amount_Term)
+    # DEBUG: print received features
+    print("FEATURE VECTOR:", data.features)
 
-        prediction = model.predict([[credit, ApplicantIncomelog,LoanAmountlog, Loan_Amount_Termlog, totalincomelog, male, married_yes, dependents_1, dependents_2, dependents_3, not_graduate, employed_yes,semiurban, urban ]])
+    f = data.features
 
-        # print(prediction)
+    # ML prediction
+    prediction = model.predict([f])[0]
 
-        if(prediction=="N"):
-            prediction="Sorry , You are not Eligible to avail loan services"
-        else:
-            prediction="Congratualtions , You Can avail loan services"
+    reasons = []
+
+    # ✅ CORRECT FEATURE MAPPING (VERY IMPORTANT)
+    credit = f[0]
+    applicant_income_log = f[1]
+    loan_amount_log = f[3]
+    print("Loan : ",loan_amount_log)        # ✅ FIXED INDEX
+    not_graduate = f[10]
+    employed_yes = f[11]
+
+    # Rule-based explanation
+    if credit == 0:
+        reasons.append("No or poor credit history")
+
+    if applicant_income_log < 8:
+        reasons.append("Low applicant income")
+
+    if loan_amount_log > 5.8:
+        reasons.append("Requested loan amount is high")
+
+    if employed_yes == 0:
+        reasons.append("Applicant is not self-employed")
+
+    if not_graduate == 1:
+        reasons.append("Applicant is not a graduate")
+
+    # Final decision
+    if prediction == "N":
+        if not reasons:
+            reasons.append("Model assessment indicates higher risk profile")
+        return {
+            "status": "NOT_ELIGIBLE",
+            "message": "Sorry, You are not Eligible to avail loan services",
+            "reasons": reasons
+        }
 
 
-        return render_template("prediction.html", prediction_text="{}".format(prediction))
-
-    else:
-        return render_template("prediction.html")
-
-
-
-        
-if __name__ == "__main__":
-    app.run(debug=True , host='0.0.0.0')
+    return {
+        "status": "ELIGIBLE",
+        "message": "Congratulations, You Can avail loan services",
+        "reasons": []
+    }
