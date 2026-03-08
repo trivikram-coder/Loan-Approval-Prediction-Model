@@ -22,6 +22,92 @@ def predict(data: PredictRequest):
         print("FEATURE COUNT:", len(f))
         print("FEATURE VECTOR:", f)
 
+        if len(f) != model.n_features_in_:
+            raise ValueError(
+                f"Expected {model.n_features_in_} features, got {len(f)}"
+            )
+
+        if not np.isfinite(f).all():
+            raise ValueError("Feature vector contains NaN or Infinity")
+
+        prediction = model.predict([f])[0]
+
+        # feature mapping
+        credit = f[0]
+        applicant_income_log = f[1]
+        loan_amount_log = f[2]
+        not_graduate = f[10]
+        employed_yes = f[11]
+
+        reasons = []
+
+        # -----------------------------
+        # NOT ELIGIBLE REASONS
+        # -----------------------------
+
+        if prediction == "N":
+
+            if credit == 0:
+                reasons.append("No or poor credit history")
+
+            if applicant_income_log < 8:
+                reasons.append("Low applicant income")
+
+            if loan_amount_log - applicant_income_log > 1.8:
+                reasons.append("Requested loan amount is high compared to income")
+
+            if employed_yes == 0:
+                reasons.append("Applicant employment stability is low")
+
+            if not_graduate == 1:
+                reasons.append("Applicant education level increases risk profile")
+
+            if not reasons:
+                reasons.append("Model assessment indicates higher risk profile")
+
+            return {
+                "status": "NOT_ELIGIBLE",
+                "message": "Sorry, You are not Eligible to avail loan services",
+                "reasons": reasons
+            }
+
+        # -----------------------------
+        # ELIGIBLE REASONS
+        # -----------------------------
+
+        if credit == 1:
+            reasons.append("Strong credit history")
+
+        if applicant_income_log >= 8:
+            reasons.append("Applicant income is sufficient")
+
+        if loan_amount_log - applicant_income_log <= 1.8:
+            reasons.append("Loan amount is reasonable compared to income")
+
+        if employed_yes == 1:
+            reasons.append("Applicant has stable employment")
+
+        if not_graduate == 0:
+            reasons.append("Applicant education improves approval chances")
+
+        if not reasons:
+            reasons.append("Financial profile meets approval criteria")
+
+        return {
+            "status": "ELIGIBLE",
+            "message": "Congratulations, You can avail loan services. You can visit your nearby bank to apply for a loan.",
+            "reasons": reasons
+        }
+
+    except Exception as e:
+        print("❌ PREDICT ERROR:", e)
+        raise HTTPException(status_code=500, detail=str(e))
+    try:
+        f = np.array(data.features, dtype=float)
+
+        print("FEATURE COUNT:", len(f))
+        print("FEATURE VECTOR:", f)
+
         # SAFETY CHECKS (PREVENT 500)
         if len(f) != model.n_features_in_:
             raise ValueError(
@@ -69,7 +155,7 @@ def predict(data: PredictRequest):
 
         return {
             "status": "ELIGIBLE",
-            "message": "Congratulations, You can avail loan services",
+            "message": "Congratulations, You can avail loan services \n ,You can visit your nearby bank to apply for a loan..",
             "reasons": []
         }
 
