@@ -100,7 +100,7 @@ def predict(data: PredictRequest):
         }
 
     except Exception as e:
-        print("❌ PREDICT ERROR:", e)
+        print("PREDICT ERROR:", e)
         raise HTTPException(status_code=500, detail=str(e))
     try:
         f = np.array(data.features, dtype=float)
