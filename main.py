@@ -12,7 +12,7 @@ class PredictRequest(BaseModel):
 
 @app.get("/")
 def health():
-    return "ML SERVICE RUNNING SUCCESSFULLY"
+    return "ML MODEL SERVICE RUNNING SUCCESSFULLY"
 
 @app.post("/predict")
 def predict(data: PredictRequest):
